@@ -1,31 +1,32 @@
 package main
 
 import (
-	"log"
+	"flag"
+	"log/slog"
 	"net/http"
+	"os"
 
-	//"github.com/k3vwdd/letsgo/internal/utils"
-
-	"github.com/go-chi/chi/v5"
 )
 
+type application struct {
+    logger  *slog.Logger
+}
+
 func main() {
+    addr := flag.String("addr", ":4000", "HTTP Network address")
+    flag.Parse()
 
-    r := chi.NewRouter()
+    logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-    fileserver := http.FileServer(http.Dir("./ui/static/"))
-    r.Handle("GET /static/*", http.StripPrefix("/static", fileserver))
-
-    r.Get("/", home)
-    r.Get("/snippet/view/{id}", snippetView)
-    r.Get("/snippet/create", snippetCreate)
-    r.Post("/snippet/create", snippetCreatePost)
-
-    log.Print("server started on port :4000")
-    err := http.ListenAndServe(":4000", r)
-    if err != nil {
-        log.Fatal(err)
+    app := &application{
+        logger: logger,
     }
+
+    logger.Info("starting server", "addr", *addr)
+
+    err := http.ListenAndServe(*addr, app.routes())
+    logger.Error(err.Error())
+    os.Exit(1)
 
 }
 
