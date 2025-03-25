@@ -7,15 +7,21 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/alexedwards/scs/mysqlstore"
+	"github.com/alexedwards/scs/v2"
+	"github.com/go-playground/form/v4"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/k3vwdd/letsgo/internal/models"
 )
 
 type application struct {
-    logger  *slog.Logger
-    snippets *models.SnippetModel
+    logger          *slog.Logger
+    snippets        *models.SnippetModel
     templateCache   map[string]*template.Template
+    formDecoder     *form.Decoder
+    sessionManager  *scs.SessionManager
 }
 
 func openDB(dsn string) (*sql.DB, error) {
@@ -54,15 +60,29 @@ func main() {
         os.Exit(1)
     }
 
+    formDecoder := form.NewDecoder()
+
+    sessionManger := scs.New()
+    sessionManger.Store = mysqlstore.New(db)
+    sessionManger.Lifetime = 12 * time.Hour
+
     app := &application{
         logger: logger,
         snippets: &models.SnippetModel{DB: db},
         templateCache: templateCache,
+        formDecoder:   formDecoder,
+        sessionManager: sessionManger,
+    }
+
+    serv := &http.Server{
+        Addr: *addr,
+        Handler: app.routes(),
+        ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
     }
 
     logger.Info("starting server", "addr", *addr)
 
-    err = http.ListenAndServe(*addr, app.routes())
+    err = serv.ListenAndServeTLS("./tls/cert.pem", "./tls/key.pem")
     logger.Error(err.Error())
     os.Exit(1)
 
